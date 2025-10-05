@@ -185,4 +185,4 @@ D-HYDROPT/
 
 ## Acknowledgements
 
-This implementation by Moritmer Werther extends the original HYDROPT framework. We thank Tadzio Holtrop and Hendrik Jan van der Woerd for developing and openly sharing HYDROPT.
+This implementation by Mortimer Werther extends the original HYDROPT framework. We thank Tadzio Holtrop and Hendrik Jan van der Woerd for developing and openly sharing HYDROPT.
