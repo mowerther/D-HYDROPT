@@ -1,7 +1,7 @@
 import warnings
 import itertools
 import numpy as np
-from numpy.lib.index_tricks import ndindex
+from numpy import ndindex
 from xarray import Dataset
 
 def apply_along_axis(func1d, axis, arr, progress_bar=None, *args, **kwargs):
@@ -78,7 +78,7 @@ def der_2d_polynomial(x, c, p):
     c: coefficients of the polynomial terms; a nxm matrix where n is the number wavebands and m the number of polynomial terms
     p: exponents of the n polynomial terms; a mx2 matrix
     '''
-    if c.shape[0] is not x.shape[0]:
+    if c.shape[0] != x.shape[0]:
         warnings.warn('matrix dimensions of x and c do not match!')
     # derivative of powers and truncate to positive floats
     p_trunc = lambda p: float(max(0, p-1))

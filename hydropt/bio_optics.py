@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
-import pkg_resources
+from hydropt.data import data_path
 from hydropt.utils import interpolate_to_wavebands
 
-PHYTO_SIOP = pkg_resources.resource_filename('hydropt', 'data/phyto_siop.csv')
-PHYTO_SC_SIOP = pkg_resources.resource_filename('hydropt', 'data/psc_absorption_se_uitz_2008.csv')
-H2O_IOP_DEFAULT_STREAM = pkg_resources.resource_filename('hydropt', '/data/water_mason016.csv')
+PHYTO_SIOP = data_path('phyto_siop.csv')
+PHYTO_SC_SIOP = data_path('psc_absorption_se_uitz_2008.csv')
+H2O_IOP_DEFAULT_STREAM = data_path('water_mason016.csv')
 H2O_IOP_DEFAULT = pd.read_csv(H2O_IOP_DEFAULT_STREAM, sep=',', index_col='wavelength')
 
 OLCI_WBANDS = np.array([400, 412.5, 442.5, 490, 510, 560, 620, 665, 673.75, 681.25, 708.75])

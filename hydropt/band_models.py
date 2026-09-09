@@ -21,7 +21,7 @@ def normalize_reflectance(rrs):
     '''
     rrs - pandas Series
     '''
-    rrs_normalized = rrs/np.trapz(rrs, x=rrs.index)
+    rrs_normalized = rrs/np.trapezoid(rrs, x=rrs.index)
 
     return rrs_normalized
 

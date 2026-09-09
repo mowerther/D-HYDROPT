@@ -2,13 +2,12 @@
 import numpy as np
 import jax.numpy as jnp
 import pandas as pd
-import pkg_resources
+from hydropt.data import data_path
 
 ORDER = ['1','a','bb','a^2','a bb','bb^2','a^3','a^2 bb','a bb^2','bb^3','a^4','a^3 bb','a^2 bb^2','a bb^3','bb^4']
 
 def load_pace_poly():
-    import pandas as pd, pkg_resources, jax.numpy as jnp
-    stream = pkg_resources.resource_filename('hydropt', 'data/PACE_polynom_04_h2o.csv')
+    stream = data_path('PACE_polynom_04_h2o.csv')
     df = pd.read_csv(stream)
     if 'wavelength' not in df.columns:
         df = pd.read_csv(stream, index_col=0).reset_index().rename(columns={'index':'wavelength'})

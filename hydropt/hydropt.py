@@ -2,15 +2,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import types
-import pkg_resources
 from abc import ABC, abstractmethod
 from sklearn.preprocessing import PolynomialFeatures
 import pandas as pd
 from xarray import DataArray
+from hydropt.data import data_path
 from hydropt.band_models import BandModel
 from hydropt.utils import der_2d_polynomial, recurse, apply_along_axis, update_lmfit_parameters, lmfit_results_to_array
 
-PACE_POLYNOM_04_H2O_STREAM = pkg_resources.resource_filename('hydropt', 'data/PACE_polynom_04_h2o.csv')
+PACE_POLYNOM_04_H2O_STREAM = data_path('PACE_polynom_04_h2o.csv')
 PACE_POLYNOM_04_H2O = pd.read_csv(PACE_POLYNOM_04_H2O_STREAM, index_col=0)
 
 def check_iop_dims(wavebands, **kwargs):
