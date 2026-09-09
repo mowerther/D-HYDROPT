@@ -27,7 +27,7 @@ Only bands whose spectral response lies inside the range where the coefficients
 are trustworthy. Two separate limits apply:
 
   * The coefficient table stops at 710 nm. MSI bands 740 and 783 have
-    essentially none of their response inside it (1e-6 and 4e-7 of their
+    essentially none of their response inside it (1e-6 and 4e-18 of their
     Gaussian mass), so band-integrating over the table produces a number that
     is not a 740 or 783 nm measurement at all -- it is Rrs at 710 nm, twice.
   * The coefficients degenerate before that stop. The largest coefficient per
@@ -311,7 +311,7 @@ def select_pixel(forward, states, targets, mode='best', steps=400, lr=0.05,
 
 def plot_results(median_jacobian, support, fine_wl, bands, observed,
                  predicted_initial, predicted_final, losses, out_path,
-                 colour_limit=3e-4, linear_threshold=1e-7):
+                 colour_limit=1.5e-3, linear_threshold=1e-7):
     '''
     Four-panel summary: two Jacobian heatmaps, the pixel fit, and convergence.
 
@@ -330,10 +330,15 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
     n_bands = len(band_wl)
     lo, hi = RELIABLE_WAVELENGTH_RANGE
 
-    figure = plt.figure(figsize=(15, 4))
+    figure = plt.figure(figsize=(15, 5))
     grid = figure.add_gridspec(
-        2, 5, width_ratios=[1.1, 1.1, 0.05, 0.75, 1.6], height_ratios=[1.0, 1.0],
-        wspace=0.15, hspace=0.4, top=0.96, bottom=0.13)
+        1, 5, width_ratios=[1.1, 1.1, 0.05, 0.75, 1.6],
+        wspace=0.15, top=0.90, bottom=0.13)
+    # A dedicated legend row keeps all explanatory text clear of the spectra.
+    right_grid = grid[0, 4].subgridspec(
+        3, 1, height_ratios=[0.40, 1.0, 1.0], hspace=0.55)
+    legend_axis = figure.add_subplot(right_grid[0])
+    legend_axis.axis('off')
 
     colours = plt.get_cmap('seismic').copy()
     colours.set_bad(color='none', alpha=0.0)
@@ -383,14 +388,14 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
 
     axis_a = figure.add_subplot(grid[:, 0])
     image = draw_heatmap(axis_a, median_jacobian[0],
-                         r'$\partial R_{rs}^{\mathrm{band}} / \partial \ln a(\lambda)$')
+                         r'$\partial R_{rs}^{\mathrm{band}} / \partial \ln \Delta a(\lambda)$')
     axis_a.set_ylabel('MSI band [nm]', fontsize=14, fontweight='bold')
     axis_a.text(0.98, 0.98, '(A)', transform=axis_a.transAxes, fontsize=14,
                 fontweight='bold', va='top', ha='right')
 
     axis_b = figure.add_subplot(grid[:, 1])
     draw_heatmap(axis_b, median_jacobian[1],
-                 r'$\partial R_{rs}^{\mathrm{band}} / \partial \ln b_b(\lambda)$')
+                 r'$\partial R_{rs}^{\mathrm{band}} / \partial \ln \Delta b_b(\lambda)$')
     axis_b.set_yticklabels([])
     axis_b.text(0.98, 0.98, '(B)', transform=axis_b.transAxes, fontsize=14,
                 fontweight='bold', va='top', ha='right')
@@ -403,7 +408,7 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
 
     figure.add_subplot(grid[:, 3]).axis('off')
 
-    axis_fit = figure.add_subplot(grid[0, 4])
+    axis_fit = figure.add_subplot(right_grid[1])
     axis_fit.plot(band_wl, np.asarray(observed), 'o-', color='black', markersize=9,
                   linewidth=2.5, label='Observed', zorder=3)
     axis_fit.plot(band_wl, np.asarray(predicted_initial), 'o--', color='tab:blue',
@@ -416,32 +421,30 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
         # and ring the bands whose response the grid cuts short.
         axis_fit.axvspan(hi, max(band_wl) * 1.03, alpha=0.12, color='grey', zorder=0)
         axis_fit.axvline(hi, color='firebrick', linestyle='--', linewidth=1.2,
-                         alpha=0.8, zorder=1)
+                         alpha=0.8, zorder=1, label='Reliable limit (680 nm)')
         axis_fit.scatter(band_wl[is_clipped], np.asarray(predicted_final)[is_clipped],
                          s=130, facecolors='none', edgecolors='firebrick',
                          linewidths=1.6, zorder=5, label='Clipped response (*)')
-        axis_fit.annotate(
-            '{:.0f} nm'.format(hi), xy=(hi, 1.0), xycoords=('data', 'axes fraction'),
-            xytext=(-3, -2), textcoords='offset points', ha='right', va='top',
-            fontsize=8, color='firebrick', rotation=90)
 
     axis_fit.set_xlabel('MSI band [nm]', fontsize=14, fontweight='bold')
     axis_fit.set_ylabel(r'$\mathbf{R_{rs}}$ [sr$^{-1}$]', fontsize=14, fontweight='bold')
     axis_fit.set_ylim(bottom=0.0)
     axis_fit.set_xlim(min(band_wl) - 15, max(band_wl) * 1.03)
     axis_fit.grid(True, alpha=0.3)
-    axis_fit.legend(framealpha=0.9, fontsize=8, loc='lower left')
-    axis_fit.text(0.99, 0.97, '(C)', transform=axis_fit.transAxes, fontsize=14,
-                  fontweight='bold', va='top', ha='right')
+    handles, labels = axis_fit.get_legend_handles_labels()
+    legend_axis.legend(handles, labels, frameon=False, fontsize=8.5,
+                       loc='center', ncol=2, columnspacing=1.5)
+    axis_fit.text(0.0, 1.04, '(C)', transform=axis_fit.transAxes, fontsize=14,
+                  fontweight='bold', va='bottom', ha='left')
 
-    axis_loss = figure.add_subplot(grid[1, 4])
+    axis_loss = figure.add_subplot(right_grid[2])
     axis_loss.plot(np.arange(len(losses)), losses, linewidth=2, color='green')
     axis_loss.set_yscale('log')
     axis_loss.set_xlabel('Optimisation step', fontsize=14, fontweight='bold')
     axis_loss.set_ylabel('MSE', fontsize=14, fontweight='bold')
     axis_loss.grid(True, alpha=0.3)
-    axis_loss.text(0.99, 0.97, '(D)', transform=axis_loss.transAxes, fontsize=14,
-                   fontweight='bold', va='top', ha='right')
+    axis_loss.text(0.0, 1.04, '(D)', transform=axis_loss.transAxes, fontsize=14,
+                   fontweight='bold', va='bottom', ha='left')
 
     left, right = axis_a.get_position(), axis_b.get_position()
     figure.text((left.x0 + right.x1) / 2, 0.02, 'HYDROPT $\\lambda$ [nm]',
@@ -557,9 +560,9 @@ def main(argv=None):
 
     on_support = np.asarray(support)
     print('\nSensitivity across the ensemble, on each band\'s spectral support:')
-    print('  median |dRrs/dln a|   {:.3e}'.format(
+    print('  median |dRrs/dln excess a|   {:.3e}'.format(
         float(np.median(np.abs(np.asarray(median_jacobian[0]))[on_support]))))
-    print('  median |dRrs/dln bb|  {:.3e}'.format(
+    print('  median |dRrs/dln excess bb|  {:.3e}'.format(
         float(np.median(np.abs(np.asarray(median_jacobian[1]))[on_support]))))
     print('  median CoV (a)        {:.3f}'.format(
         float(np.median(np.asarray(cov[0])[on_support]))))

@@ -24,7 +24,7 @@ setup(
     long_description=get_long_description(),
     long_description_content_type='text/markdown',
     license='AGPL-3.0',
-    python_requires='>=3.9',
+    python_requires='>=3.10',
     # hydropt.data is a real package, not just a data directory: it carries the
     # data_path() helper that both hydropt and hydropt_jax import. Omitting it
     # here still ships the CSVs, but leaves hydropt.data as an implicit

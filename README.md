@@ -30,7 +30,7 @@ model to it: the two agree to 1e-10 relative on both the forward model and its g
 
 ## Install
 
-Python 3.9 or newer.
+Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/mowerther/D-HYDROPT.git
@@ -212,8 +212,10 @@ ensemble of optical states, inverts one pixel by gradient descent, and writes
 
 ![MSI sensitivity and gradient inversion](examples/figures/msi_gradient_inversion.png)
 
-**(A, B)** median ∂R<sub>rs</sub><sup>band</sup>/∂ln a and ∂R<sub>rs</sub><sup>band</sup>/∂ln b<sub>b</sub>
-across the ensemble, on a symmetric-log colour axis — sensitivity spans two orders of
+**(A, B)** median ∂R<sub>rs</sub><sup>band</sup>/∂ln Δa and ∂R<sub>rs</sub><sup>band</sup>/∂ln Δb<sub>b</sub>,
+where Δa = a − a<sub>water</sub> and Δb<sub>b</sub> = b<sub>b</sub> − b<sub>b,water</sub>
+are the excess IOPs above pure water. These derivatives are taken across the ensemble
+and shown on a symmetric-log colour axis — sensitivity spans two orders of
 magnitude from the blue bands to the red. **(C)** the observed spectrum, the starting guess
 and the fit; the ringed point is the 704 nm band, whose response the coefficient grid cuts
 short. **(D)** convergence.
