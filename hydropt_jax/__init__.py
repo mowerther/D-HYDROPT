@@ -25,6 +25,13 @@ from .data import (  # noqa: E402
     resample_coeffs,
     term_names,
 )
+from .bands import (  # noqa: E402
+    MSI_FWHM_NM,
+    build_gaussian_srf,
+    classify_bands,
+    msi_sigma_nm,
+    srf_coverage,
+)
 from .domain import (  # noqa: E402
     RELIABLE_WAVELENGTH_RANGE,
     DomainError,
@@ -37,17 +44,22 @@ from .domain import (  # noqa: E402
 __all__ = [
     'COEFFICIENT_FILES',
     'DomainError',
+    'MSI_FWHM_NM',
     'RELIABLE_WAVELENGTH_RANGE',
+    'build_gaussian_srf',
     'check_domain',
+    'classify_bands',
     'iops_from_excess',
     'load_pace_poly',
     'load_water_iops',
     'reliable_band_mask',
     'monomial_powers_2d',
+    'msi_sigma_nm',
     'polynomial_features_2d',
     'resample_coeffs',
     'rrs_from_excess',
     'rrs_poly',
     'rrs_poly_batched',
+    'srf_coverage',
     'term_names',
 ]
