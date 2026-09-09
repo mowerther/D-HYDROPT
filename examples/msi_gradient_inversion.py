@@ -403,8 +403,18 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
     colour_axis = figure.add_subplot(grid[:, 2])
     bar = figure.colorbar(image, cax=colour_axis, extend='both')
     bar.set_label('Sensitivity [sr$^{-1}$]', fontsize=13, fontweight='bold')
-    decades = [colour_limit / 10 ** k for k in range(3)]
-    bar.set_ticks([-t for t in decades] + [0.0] + decades[::-1])
+    # Label true powers of ten all the way to the linear region around zero.
+    # Dividing the colour limit produced arbitrary 1.5 multiples and hid the
+    # small-value decades on this symmetric-log scale.
+    exponents = np.arange(int(np.ceil(np.log10(linear_threshold))),
+                          int(np.floor(np.log10(colour_limit))) + 1)
+    positive_ticks = 10.0 ** exponents
+    ticks = np.concatenate((-positive_ticks[::-1], [0.0], positive_ticks))
+    labels = ([rf'$-10^{{{power}}}$' for power in exponents[::-1]] + ['$0$']
+              + [rf'$10^{{{power}}}$' for power in exponents])
+    bar.set_ticks(ticks, labels=labels)
+    bar.minorticks_off()
+    bar.ax.tick_params(labelsize=10)
 
     figure.add_subplot(grid[:, 3]).axis('off')
 
@@ -421,14 +431,20 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
         # and ring the bands whose response the grid cuts short.
         axis_fit.axvspan(hi, max(band_wl) * 1.03, alpha=0.12, color='grey', zorder=0)
         axis_fit.axvline(hi, color='firebrick', linestyle='--', linewidth=1.2,
-                         alpha=0.8, zorder=1, label='Reliable limit (680 nm)')
+                         alpha=0.8, zorder=1, label='HYDROPT limit ({:.0f} nm)'.format(hi))
         axis_fit.scatter(band_wl[is_clipped], np.asarray(predicted_final)[is_clipped],
                          s=130, facecolors='none', edgecolors='firebrick',
                          linewidths=1.6, zorder=5, label='Clipped response (*)')
 
     axis_fit.set_xlabel('MSI band [nm]', fontsize=14, fontweight='bold')
     axis_fit.set_ylabel(r'$\mathbf{R_{rs}}$ [sr$^{-1}$]', fontsize=14, fontweight='bold')
-    axis_fit.set_ylim(bottom=0.0)
+    # Round the upper limit to a labelled tick without clipping any spectrum.
+    peak_rrs = max(float(np.max(values))
+                   for values in (observed, predicted_initial, predicted_final))
+    rrs_ticks = mpl.ticker.MaxNLocator(nbins=5, steps=[1, 2, 5, 10]).tick_values(
+        0.0, 1.05 * peak_rrs)
+    axis_fit.set_yticks(rrs_ticks)
+    axis_fit.set_ylim(0.0, rrs_ticks[-1])
     axis_fit.set_xlim(min(band_wl) - 15, max(band_wl) * 1.03)
     axis_fit.grid(True, alpha=0.3)
     handles, labels = axis_fit.get_legend_handles_labels()
