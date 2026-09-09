@@ -1,40 +1,48 @@
 from setuptools import setup
+
 import versioneer
 
+
 def get_long_description():
-    """Extract description from README.md, for PyPI's usage"""
-    def process_ignore_tags(buffer):
-        return "\n".join(
-            x for x in buffer.split("\n") if "<!-- ignore_ppi -->" not in x
-        )
+    '''README.md, for PyPI.'''
     try:
-        fpath = "README.md"
-        with open(fpath, encoding="utf-8") as f:
-            readme = f.read()
-            desc = readme.partition("<!-- start_ppi_description -->")[2]
-            desc = desc.partition("<!-- stop_ppi_description -->")[0]
-            return process_ignore_tags(desc.strip())
+        with open('README.md', encoding='utf-8') as readme:
+            return readme.read()
     except IOError:
         return None
 
-setup(name='hydropt-oc',
-      version=versioneer.get_version(),
-      cmdclass=versioneer.get_cmdclass(),
-      url='https://github.com/tadz-io/hydropt',
-      author='Tadzio Holtrop',
-      author_email='tadzio.holtrop@icloud.com',
-      description='''HYDROPT: a Python Framework for Fast Inverse Modelling of
-       Multi- and Hyperspectral Ocean Color Data''',
-      long_description=get_long_description(),
-      long_description_content_type="text/markdown",
-      license='AGPL-3.0',
-      packages=['hydropt', 'hydropt_jax'],
-      package_dir={'hydropt': 'hydropt', 'hydropt_jax': 'hydropt_jax'},
-      package_data={'hydropt': ['data/*.csv']},
-      install_requires=[
-          'numpy',
-          'pandas',
-          'matplotlib',
-          'scikit-learn',
-          'xarray'],
-      zip_safe=False)
+
+setup(
+    name='d-hydropt',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
+    url='https://github.com/mowerther/D-HYDROPT',
+    author='Mortimer Werther',
+    description=(
+        'D-HYDROPT: differentiable HYDROPT for gradient-based inversion of '
+        'ocean colour observations'),
+    long_description=get_long_description(),
+    long_description_content_type='text/markdown',
+    license='AGPL-3.0',
+    python_requires='>=3.9',
+    # hydropt.data is a real package, not just a data directory: it carries the
+    # data_path() helper that both hydropt and hydropt_jax import. Omitting it
+    # here still ships the CSVs, but leaves hydropt.data as an implicit
+    # namespace package with no data_path, so the install imports and then
+    # fails on first use.
+    packages=['hydropt', 'hydropt.data', 'hydropt_jax'],
+    package_data={'hydropt.data': ['*.csv']},
+    install_requires=[
+        'numpy>=2.0',
+        'pandas>=2.0',
+        'matplotlib>=3.7',
+        'scikit-learn>=1.3',
+        'xarray>=2023.1',
+        'jax>=0.4.31'],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: GNU Affero General Public License v3',
+        'Programming Language :: Python :: 3',
+        'Topic :: Scientific/Engineering :: Atmospheric Science'],
+    zip_safe=False)
