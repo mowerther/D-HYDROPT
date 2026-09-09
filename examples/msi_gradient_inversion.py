@@ -420,7 +420,7 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
 
     axis_fit = figure.add_subplot(right_grid[1])
     axis_fit.plot(band_wl, np.asarray(observed), 'o-', color='black', markersize=9,
-                  linewidth=2.5, label='Observed', zorder=3)
+                  linewidth=2.5, label='MSI observed', zorder=3)
     axis_fit.plot(band_wl, np.asarray(predicted_initial), 'o--', color='tab:blue',
                   markersize=5, label='Initial guess', zorder=4)
     axis_fit.plot(band_wl, np.asarray(predicted_final), 'o--', color='limegreen',
@@ -435,7 +435,9 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
                          label='HYDROPT polynomial degrades > {:.0f} nm'.format(hi))
         axis_fit.scatter(band_wl[is_clipped], np.asarray(predicted_final)[is_clipped],
                          s=130, facecolors='none', edgecolors='firebrick',
-                         linewidths=1.6, zorder=5, label='Clipped response (*)')
+                         linewidths=1.6, zorder=5,
+                         label='Response cut off at {:.0f} nm (*)'.format(
+                             float(np.max(fine_wl))))
 
     axis_fit.set_xlabel('MSI band [nm]', fontsize=14, fontweight='bold')
     axis_fit.set_ylabel(r'$\mathbf{R_{rs}}$ [sr$^{-1}$]', fontsize=14, fontweight='bold')
