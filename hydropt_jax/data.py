@@ -69,6 +69,33 @@ def load_pace_poly(degree=4):
     return jnp.asarray(lam, jnp.float64), jnp.asarray(coeffs, jnp.float64)
 
 
+def load_water_iops(wavelength=None):
+    '''
+    Pure water absorption and backscattering (Mason et al. 2016).
+
+    wavelength - wavelengths in nm to interpolate onto; None returns the table
+                 on its own native grid.
+
+    Returns (a_water, bb_water), both in m^-1.
+
+    These are the physical floor on total IOPs: no natural water body can
+    absorb or backscatter less than pure water does. HYDROPT's polynomial was
+    fitted with water always included, so evaluating it below this floor is
+    extrapolation. See hydropt_jax.domain.
+    '''
+    df = pd.read_csv(data_path('water_mason016.csv'), index_col='wavelength')
+    lam = df.index.to_numpy(float)
+    a = df['a'].to_numpy(float)
+    bb = df['bb'].to_numpy(float)
+    if wavelength is None:
+        return jnp.asarray(a, jnp.float64), jnp.asarray(bb, jnp.float64)
+
+    target = np.asarray(wavelength, float)
+
+    return (jnp.asarray(np.interp(target, lam, a), jnp.float64),
+            jnp.asarray(np.interp(target, lam, bb), jnp.float64))
+
+
 def resample_coeffs(lam_src, coeffs_src, lam_tgt):
     '''
     Linearly interpolate polynomial coefficients onto new wavelengths.

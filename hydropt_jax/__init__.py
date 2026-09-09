@@ -21,16 +21,32 @@ from .core import (  # noqa: E402
 from .data import (  # noqa: E402
     COEFFICIENT_FILES,
     load_pace_poly,
+    load_water_iops,
     resample_coeffs,
     term_names,
+)
+from .domain import (  # noqa: E402
+    RELIABLE_WAVELENGTH_RANGE,
+    DomainError,
+    check_domain,
+    iops_from_excess,
+    reliable_band_mask,
+    rrs_from_excess,
 )
 
 __all__ = [
     'COEFFICIENT_FILES',
+    'DomainError',
+    'RELIABLE_WAVELENGTH_RANGE',
+    'check_domain',
+    'iops_from_excess',
     'load_pace_poly',
+    'load_water_iops',
+    'reliable_band_mask',
     'monomial_powers_2d',
     'polynomial_features_2d',
     'resample_coeffs',
+    'rrs_from_excess',
     'rrs_poly',
     'rrs_poly_batched',
     'term_names',
