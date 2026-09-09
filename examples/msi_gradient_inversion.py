@@ -69,16 +69,17 @@ import re
 import sys
 from pathlib import Path
 
+# Run from a clone without installing.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patheffects as mpe
-import jax
-import jax.numpy as jnp
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.patheffects as mpe  # noqa: E402
+import jax  # noqa: E402
+import jax.numpy as jnp  # noqa: E402
 
-from hydropt_jax import (
+from hydropt_jax import (  # noqa: E402
     RELIABLE_WAVELENGTH_RANGE,
     build_gaussian_srf,
     check_domain,
@@ -89,7 +90,10 @@ from hydropt_jax import (
     monomial_powers_2d,
     msi_sigma_nm,
     rrs_poly,
-)# --------------------------------------------------------------------------
+)
+
+
+# --------------------------------------------------------------------------
 # Data
 # --------------------------------------------------------------------------
 

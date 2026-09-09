@@ -87,6 +87,7 @@ class TestSilentZeros(unittest.TestCase):
                         'expected exact zeros past the red edge')
         # ... and the gradient dies with it, which is why the optimiser could
         # never recover those bands.
+
         def forward(state):
             return jnp.sum(rrs_poly(state[0], state[1], self.coeffs, self.powers))
 
