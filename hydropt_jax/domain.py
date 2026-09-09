@@ -132,20 +132,29 @@ def check_domain(a, bb, wavelength, coeffs=None, powers=None, error=True):
     lam = np.asarray(wavelength, float)
     problems = []
 
+    finite_a, finite_bb = np.isfinite(a), np.isfinite(bb)
+    for name, finite in (('absorption', finite_a), ('backscattering', finite_bb)):
+        if not finite.all():
+            problems.append(
+                '{} is non-finite at {} of {} wavelengths ({} nm). '
+                'All IOPs must be finite before evaluating the forward model.'
+                .format(name, int((~finite).sum()), lam.size,
+                        ', '.join('{:.0f}'.format(v) for v in lam[~finite])))
+
     a_water, bb_water = (np.asarray(v, float) for v in load_water_iops(lam))
 
-    below_a = a < a_water
+    below_a = finite_a & (a < a_water)
     if below_a.any():
-        worst = int(np.argmin(a / a_water))
+        worst = int(np.argmin(np.where(below_a, a / a_water, np.inf)))
         problems.append(
             'absorption is below pure water at {} of {} wavelengths '
             '(worst: a = {:.4g} m^-1 at {:.0f} nm, where pure water alone is '
             '{:.4g} m^-1). Parameterise with iops_from_excess() to prevent this.'
             .format(int(below_a.sum()), lam.size, a[worst], lam[worst], a_water[worst]))
 
-    below_bb = bb < bb_water
+    below_bb = finite_bb & (bb < bb_water)
     if below_bb.any():
-        worst = int(np.argmin(bb / bb_water))
+        worst = int(np.argmin(np.where(below_bb, bb / bb_water, np.inf)))
         problems.append(
             'backscattering is below pure water at {} of {} wavelengths '
             '(worst: bb = {:.4g} m^-1 at {:.0f} nm, where pure water alone is '
@@ -163,19 +172,20 @@ def check_domain(a, bb, wavelength, coeffs=None, powers=None, error=True):
                     ', '.join('{:.0f}'.format(v) for v in lam[outside][:6])
                     + (' ...' if outside.sum() > 6 else ''), hi))
 
-    if coeffs is not None and powers is not None:
+    if coeffs is not None and powers is not None and finite_a.all() and finite_bb.all():
+        rrs = np.asarray(rrs_poly(jnp.asarray(a), jnp.asarray(bb), coeffs, powers), float)
         with np.errstate(divide='ignore'):
-            log_rrs = np.log(np.asarray(rrs_poly(
-                jnp.asarray(a), jnp.asarray(bb), coeffs, powers), float))
+            log_rrs = np.log(rrs)
         runaway = ~np.isfinite(log_rrs) | (log_rrs < LOG_RRS_FLOOR) | (log_rrs > LOG_RRS_CEILING)
         if runaway.any():
-            worst = int(np.nanargmin(np.where(np.isfinite(log_rrs), log_rrs, np.inf)))
+            excursion = np.maximum(LOG_RRS_FLOOR - log_rrs, log_rrs - LOG_RRS_CEILING)
+            worst = int(np.argmax(np.where(np.isfinite(log_rrs), excursion, np.inf)))
             problems.append(
                 'the polynomial has run away at {} of {} wavelengths: log(Rrs) '
                 'leaves [{:.0f}, {:.0f}] (worst: {:.1f} at {:.0f} nm, i.e. Rrs = {:.3g} sr^-1). '
                 'This means the polynomial is extrapolating, not that the water is dark.'
                 .format(int(runaway.sum()), lam.size, LOG_RRS_FLOOR, LOG_RRS_CEILING,
-                        log_rrs[worst], lam[worst], np.exp(max(log_rrs[worst], -745.0))))
+                        log_rrs[worst], lam[worst], rrs[worst]))
 
     if problems:
         message = 'state is outside the HYDROPT polynomial domain:\n  - ' + '\n  - '.join(problems)

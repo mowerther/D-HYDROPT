@@ -158,6 +158,45 @@ class TestCheckDomain(unittest.TestCase):
                                     np.asarray(bb_water) + 0.005, lam, error=False)
         self.assertTrue(any('outside the reliable range' in p for p in problems))
 
+    def test_rejects_nonfinite_iops_with_or_without_coefficients(self):
+        mask = reliable_band_mask(self.lam)
+        lam = self.lam[mask]
+        water = [np.asarray(v) for v in load_water_iops(lam)]
+        for variable, name in enumerate(('absorption', 'backscattering')):
+            for value in (np.nan, np.inf, -np.inf):
+                for include_coeffs in (False, True):
+                    with self.subTest(variable=name, value=value, coeffs=include_coeffs):
+                        state = [water[0] + 0.05, water[1] + 0.005]
+                        state[variable][0] = value
+                        optional = (self.coeffs[mask], self.powers) if include_coeffs else ()
+                        with self.assertRaises(DomainError) as raised:
+                            check_domain(*state, lam, *optional)
+                        self.assertIn(name + ' is non-finite', str(raised.exception))
+                        self.assertIn('400 nm', str(raised.exception))
+
+    def test_warns_for_nonfinite_iops_without_coefficients(self):
+        lam = self.lam[reliable_band_mask(self.lam)]
+        a_water, bb_water = load_water_iops(lam)
+        a = np.asarray(a_water) + 0.05
+        a[0] = np.nan
+        with self.assertWarns(UserWarning):
+            problems = check_domain(a, np.asarray(bb_water) + 0.005, lam, error=False)
+        self.assertTrue(any('absorption is non-finite' in p for p in problems))
+
+    def test_runaway_diagnostic_identifies_the_failing_wavelength(self):
+        lam = self.lam[reliable_band_mask(self.lam)]
+        a_water, bb_water = load_water_iops(lam)
+        # Constant polynomials isolate an overflow/underflow from valid bands.
+        for log_rrs in (-800., 2., 800.):
+            with self.subTest(log_rrs=log_rrs):
+                coeffs = np.zeros((len(lam), len(self.powers)))
+                coeffs[:, 0] = -5.
+                coeffs[0, 0] = log_rrs
+                with self.assertRaises(DomainError) as raised:
+                    check_domain(np.asarray(a_water) + 0.05,
+                                 np.asarray(bb_water) + 0.005, lam, coeffs, self.powers)
+                self.assertIn('at 400 nm, i.e. Rrs', str(raised.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -156,7 +156,7 @@ state is outside the HYDROPT polynomial domain:
     700, 705, 710). The degree-4 coefficients degenerate past 680 nm and Rrs
     underflows to exactly zero there.
   - the polynomial has run away at 6 of 63 wavelengths: log(Rrs) leaves [-30, 0]
-    (worst: -401.5 at 690 nm, i.e. Rrs = 4.08e-175 sr^-1). This means the
+    (worst: -inf at 695 nm, i.e. Rrs = 0 sr^-1). This means the
     polynomial is extrapolating, not that the water is dark.
 ```
 
