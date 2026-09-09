@@ -6,8 +6,8 @@ build_gaussian_srf() normalises each row over the coefficient grid it is given,
 so a band whose response lies mostly *outside* that grid still comes back as a
 tidy normalised row -- and the reflectance it produces is not that band at all,
 it is the reflectance at the edge of the grid wearing that band's label. For
-Sentinel-2 MSI, bands 740 and 783 have 1e-6 and 4e-7 of their response inside
-HYDROPT's 400-710 nm table, and the two rows correlate at 0.99993 because both
+Sentinel-2 MSI, bands 740 and 783 have 1e-6 and 4e-18 of their response inside
+HYDROPT's 400-710 nm table, and the two rows correlate at 0.99967 because both
 are the same delta function at 710 nm.
 
 classify_bands() is the check that catches this. Consult it before trusting any
@@ -65,9 +65,9 @@ def build_gaussian_srf(fine_wl, band_wl, sigma_nm):
     '''
     Band-integration matrix B of shape (n_bands, n_wavelengths).
 
-    Each row is a Gaussian spectral response sampled on fine_wl and normalised
-    so that it integrates to one over fine_wl. Rrs @ B.T then gives
-    band-averaged reflectance.
+    Each row includes the trapezoidal wavelength weights and sums to one.
+    Rrs @ B.T therefore gives band-averaged reflectance, preserving a constant
+    spectrum on both uniform and non-uniform wavelength grids.
 
     Note that the normalisation is over fine_wl only, so a band whose response
     mostly falls outside that grid still produces a normalised row. It will be
@@ -79,7 +79,31 @@ def build_gaussian_srf(fine_wl, band_wl, sigma_nm):
     sigma = jnp.asarray(np.broadcast_to(np.asarray(sigma_nm, float), band.shape), jnp.float64)
     response = jnp.exp(-0.5 * ((fine[None, :] - band[:, None]) / sigma[:, None]) ** 2)
 
-    return response / jnp.trapezoid(response, fine, axis=1)[:, None]
+    # Include the integration measure in B itself: callers use a dot product,
+    # not a second wavelength integral. Endpoints receive half-interval weights.
+    spacing = jnp.diff(fine)
+    weights = jnp.concatenate((spacing[:1], spacing[:-1] + spacing[1:], spacing[-1:])) / 2
+    weighted_response = response * weights[None, :]
+
+    return weighted_response / jnp.sum(weighted_response, axis=1, keepdims=True)
+
+
+def _gaussian_mass(lo, hi, centre, sigma):
+    '''
+    Mass of a unit Gaussian between lo and hi.
+
+    Uses erfc when the interval lies wholly to one side of the centre. The
+    plain erf difference cancels in the far tail -- MSI 783 nm sits 8.6 sigma
+    above 710 nm, and erf(hi) - erf(lo) rounds that to exactly zero rather
+    than 4e-18.
+    '''
+    scale = sigma * math.sqrt(2.0)
+    if centre > hi:
+        return 0.5 * (math.erfc((centre - hi) / scale) - math.erfc((centre - lo) / scale))
+    if centre < lo:
+        return 0.5 * (math.erfc((lo - centre) / scale) - math.erfc((hi - centre) / scale))
+
+    return 0.5 * (math.erf((hi - centre) / scale) - math.erf((lo - centre) / scale))
 
 
 def srf_coverage(band_wl, sigma_nm, wavelength_range):
@@ -89,14 +113,14 @@ def srf_coverage(band_wl, sigma_nm, wavelength_range):
     Computed analytically from the error function rather than from the sampled
     matrix, so it measures the real instrument response rather than the part
     that happened to be sampled.
+
+    sigma_nm may be a scalar width shared by every band.
     '''
     band = np.asarray(band_wl, float)
-    sigma = np.asarray(sigma_nm, float)
+    sigma = np.broadcast_to(np.asarray(sigma_nm, float), band.shape)
     lo, hi = wavelength_range
-    scale = np.sqrt(2.0) * sigma
 
-    return np.array([0.5 * (math.erf((hi - b) / s) - math.erf((lo - b) / s))
-                     for b, s in zip(band, scale)])
+    return np.array([_gaussian_mass(lo, hi, b, s) for b, s in zip(band, sigma)])
 
 
 def classify_bands(band_wl, sigma_nm, grid_wl):

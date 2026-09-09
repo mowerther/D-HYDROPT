@@ -179,6 +179,9 @@ srf = build_gaussian_srf(wavelength, band_wl, sigma)
 rrs_bands = rrs @ srf.T
 ```
 
+The matrix includes trapezoidal wavelength weights, so this product preserves
+reflectance units and a constant spectrum on uniform or non-uniform grids.
+
 **Check the band coverage before trusting the result.** `build_gaussian_srf` normalises each
 row over the coefficient grid, so a band lying mostly *outside* 400–710 nm still produces a
 confident-looking number — it is simply the reflectance at the grid's red end wearing that
@@ -191,7 +194,7 @@ band's label. For Sentinel-2 MSI:
 | 740 nm | 0.0001 % | **not a measurement** — this is R<sub>rs</sub>(710) |
 | 783 nm | 0.0000 % | **not a measurement** — this is R<sub>rs</sub>(710) |
 
-The 740 and 783 nm rows correlate at 0.99993 with each other, because both are the same
+The 740 and 783 nm rows correlate at 0.99967 with each other, because both are the same
 delta function at 710 nm. `classify_bands()` reports these figures and sorts bands into
 `full`, `clipped` and `unusable`.
 
