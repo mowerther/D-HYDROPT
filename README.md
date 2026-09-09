@@ -220,6 +220,11 @@ magnitude from the blue bands to the red. **(C)** the observed spectrum, the sta
 and the fit; the ringed point is the 704 nm band, whose response the coefficient grid cuts
 short. **(D)** convergence.
 
+The shaded region past 680 nm is conditional, not forbidden. The polynomial still holds
+there while excess absorption stays low — 0.85 m⁻¹ at 695 nm falling to 0.51 m⁻¹ at
+710 nm — which is why the 704 nm band is fitted at all: this pixel is clear enough to
+qualify, and `check_domain()` confirms it on the retrieved state.
+
 Useful flags: `--select {best,worst,median,improve,index}` picks which pixel to display,
 `--gd-steps` and `--gd-lr` control the optimiser, `--msi-csv` points at your own data.
 Run with `--help` for the rest.

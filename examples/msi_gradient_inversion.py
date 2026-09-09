@@ -431,7 +431,8 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
         # and ring the bands whose response the grid cuts short.
         axis_fit.axvspan(hi, max(band_wl) * 1.03, alpha=0.12, color='grey', zorder=0)
         axis_fit.axvline(hi, color='firebrick', linestyle='--', linewidth=1.2,
-                         alpha=0.8, zorder=1, label='HYDROPT limit ({:.0f} nm)'.format(hi))
+                         alpha=0.8, zorder=1,
+                         label='HYDROPT polynomial degrades > {:.0f} nm'.format(hi))
         axis_fit.scatter(band_wl[is_clipped], np.asarray(predicted_final)[is_clipped],
                          s=130, facecolors='none', edgecolors='firebrick',
                          linewidths=1.6, zorder=5, label='Clipped response (*)')
