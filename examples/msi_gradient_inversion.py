@@ -1,61 +1,61 @@
 """
-Gradient-based inversion of Sentinel-2 MSI reflectance with D-HYDROPT.
+Inversion of Sentinel-2 MSI reflectance by gradient descent with D-HYDROPT.
 
-What this demonstrates
-----------------------
+Purpose
+-------
 Automatic differentiation through the HYDROPT polynomial radiative transfer
-model, used for two things: reading off how sensitive each satellite band is to
-absorption and backscattering at each wavelength (the Jacobian), and inverting
-observed Rrs for the optical state by gradient descent.
+model serves two purposes here: the Jacobian, which gives the sensitivity of
+each satellite band to absorption and backscattering at each wavelength, and
+the inversion of MSI Rrs for the optical state by gradient descent.
 
 How the state is parameterised
 ------------------------------
-Not as log(a) and log(bb) directly. Pure water sets a hard floor on the IOPs of
-any natural water body -- at 710 nm water alone absorbs 0.827 m^-1 -- and
-HYDROPT's polynomial was fitted with water always present, so a state below
-that floor is extrapolation. The polynomial does not fail loudly there; it
-returns exp() of a large negative number, which underflows to exactly zero in
-both value and gradient, and the optimiser simply receives nothing.
+The free parameters are the logarithms of the *excess* IOPs above pure water,
+passed through hydropt_jax.domain.iops_from_excess(). Pure water sets the
+lower bound of the IOPs of natural waters, and at 710 nm pure water absorbs
+0.827 m^-1. The polynomial of HYDROPT was fitted with water included, so a
+state below that bound is extrapolation. There the polynomial returns exp()
+of a large negative number, which underflows to zero in value and gradient,
+and the optimiser receives a zero gradient and no error.
 
-So the free parameters here are the *excess* IOPs over pure water, in log
-space, via hydropt_jax.domain.iops_from_excess(). Since exp() is positive
-everywhere, no gradient step of any size can leave the physical domain.
+exp() is non-negative, so each gradient step, however large, keeps the state
+at or above the pure water floor.
 
 Which bands are used
 --------------------
-Only bands whose spectral response lies inside the range where the coefficients
-are trustworthy. Two separate limits apply:
+The example uses the bands whose spectral response lies inside the range
+where the coefficients are reliable. Two limits apply:
 
-  * The coefficient table stops at 710 nm. MSI bands 740 and 783 have
-    essentially none of their response inside it (1e-6 and 4e-18 of their
-    Gaussian mass), so band-integrating over the table produces a number that
-    is not a 740 or 783 nm measurement at all -- it is Rrs at 710 nm, twice.
-  * The coefficients degenerate before that stop. The largest coefficient per
-    wavelength holds near 3.0 from 400 to 685 nm, then grows to 707 at 710 nm.
-    Past 680 nm the model only holds for low excess absorption: at 685 nm it
-    tolerates 6.1 m^-1 of excess absorption, at 700 nm 0.62, at 710 nm 0.51.
+  * The coefficient table ends at 710 nm. MSI bands 740 and 783 have 1e-6 and
+    4e-18 of their Gaussian response inside it. Integration over the table
+    puts nearly all weight of both bands on the last wavelengths of the grid,
+    and both values approximate Rrs at 710 nm.
+  * The coefficients grow before the end of the table. The largest
+    coefficient at each wavelength stays near 3.0 from 400 to 685 nm, then
+    grows to 707 at 710 nm. Above 680 nm the model holds only for low excess
+    absorption: at 685 nm it tolerates 5.9 m^-1 of excess absorption, at
+    700 nm 0.61, at 710 nm 0.50.
 
-Bands are therefore sorted into three classes. 'Full' bands lie entirely
-inside the grid and are fitted normally. 'Clipped' bands are cut by the end of
-the grid -- MSI 704 keeps 83% of its response -- so they are fitted too, but
-their modelled value is the average over the covered part only and carries a
-known truncation bias; the figure marks them. 'Unusable' bands are dropped
-outright.
+classify_bands() therefore labels each band with one of three classes. 'Full'
+bands have at least 95% of their response inside the grid. 'Clipped' bands
+are cut by the end of the grid (MSI 704 keeps 83% of its Gaussian response).
+Their modelled value is the average over the covered part and carries a
+truncation bias, and the figure marks them. The example fits 'full' and
+'clipped' bands and discards 'unusable' bands.
 
-What this is not
-----------------
-A well-posed retrieval. The state has two free parameters at each of 63
-wavelengths and there are four usable MSI bands, so the inversion is
-under-determined by more than an order of magnitude and the fit it reaches is
-one of infinitely many that reproduce the observations exactly. The point here
-is the gradient machinery -- that the Jacobian is exact, that the optimiser
-converges, and that the state stays physical throughout. A real retrieval needs
-the state reduced to a few bio-optical parameters, as in hydropt.bio_optics.
+Scope of the example
+--------------------
+The inversion is underdetermined: the state has two free parameters at each
+of 63 wavelengths, constrained by five MSI bands. Many states fit these bands
+equally well. The example illustrates exact gradients and stable convergence
+within the physical domain. A well-posed retrieval reduces the state to a few
+bio-optical parameters, as hydropt.bio_optics does.
 
 Other assumptions
 -----------------
-- Nadir view, 30 degree solar zenith angle (the polynomial's geometry).
-- Gaussian spectral response functions, from published MSI FWHM values.
+- Nadir view, 30 degree solar zenith angle (the geometry of the polynomial).
+- Gaussian approximation of the spectral response functions, from the nominal
+  MSI FWHM (Drusch et al., 2012).
 - Vertically homogeneous water column, Rrs already atmospherically corrected.
 - Spectral smoothness imposed through a radial basis function expansion.
 
@@ -91,6 +91,7 @@ from hydropt_jax import (  # noqa: E402
     msi_sigma_nm,
     rrs_poly,
 )
+from hydropt_jax.bands import CLIPPED_SRF_FRACTION  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -101,8 +102,8 @@ def load_rrs_csv(path):
     '''
     Load Rrs from a CSV whose column headers are wavelengths.
 
-    Returns (X, wl) with X of shape (n_pixels, n_bands). Rows containing any
-    non-finite value are dropped.
+    Returns (X, wl) with X of shape (n_pixels, n_bands). Rows containing NaN
+    or infinite values are dropped.
     '''
     df = pd.read_csv(path, sep=None, engine='python')
     df = df.drop(columns=[c for c in df.columns
@@ -114,7 +115,7 @@ def load_rrs_csv(path):
         if match:
             columns.append((float(match.group(0)), column))
     if not columns:
-        raise ValueError('no wavelength-like column headers found in {}'.format(path))
+        raise ValueError('no column headers containing wavelengths in {}'.format(path))
 
     columns.sort()
     wl = np.array([w for w, _ in columns], float)
@@ -129,11 +130,13 @@ def load_rrs_csv(path):
 
 def build_forward(coeffs, powers, srf, a_water, bb_water):
     '''
-    Band-integrated forward model and its Jacobian, over log excess IOPs.
+    Forward model integrated over each band, and its Jacobian, over log excess
+    IOPs.
 
     Returns (forward, jacobian). forward maps a state of shape
-    (2, n_wavelengths) -- [log excess a, log excess bb] -- to band Rrs of shape
-    (n_bands,). The pure-water floor is built in, so no state is out of domain.
+    (2, n_wavelengths), holding [log excess a, log excess bb], to band Rrs of
+    shape (n_bands,). The pure water floor is part of the parameterisation, so
+    each state satisfies it.
     '''
     coeffs = jnp.asarray(coeffs, jnp.float64)
     powers = jnp.asarray(powers, jnp.int32)
@@ -151,7 +154,8 @@ def rbf_basis(wl, n_centres=6, sigma_nm=40.0):
     '''
     Radial basis functions used to keep sampled spectra smooth.
 
-    Returns a matrix of shape (n_wavelengths, n_centres), column-normalised.
+    Returns a matrix of shape (n_wavelengths, n_centres), with each column
+    normalised to sum to one.
     '''
     wl = jnp.asarray(wl, jnp.float64)
     centres = jnp.linspace(float(wl[0]), float(wl[-1]), n_centres)
@@ -185,8 +189,8 @@ def jacobian_statistics(jacobian_fn, states, srf, wl, n_samples=64, support_thre
 
     Returns (median, coefficient_of_variation, support), each of shape
     (2, n_bands, n_wavelengths) for the median and CoV and (n_bands,
-    n_wavelengths) for the support mask. Entries outside a band's spectral
-    support are zeroed, since the Jacobian there is meaningless.
+    n_wavelengths) for the support mask. Entries outside the spectral support
+    of a band are set to zero, because the band has negligible response there.
     '''
     J = jax.vmap(jacobian_fn)(states[:n_samples])
     # (n_states, n_bands, 2, n_wavelengths) -> (n_states, 2, n_bands, n_wavelengths)
@@ -221,14 +225,12 @@ def descend(forward, state, target, steps=400, lr=0.05):
     '''
     Fit one pixel by Adam. Returns (trajectory, losses).
 
-    Adam rather than plain normalised gradient descent, because the problem is
-    badly scaled across wavelength. Rrs at 443 nm is roughly twenty times Rrs at
-    665 nm for these spectra, and the Jacobian scales with Rrs, so a single
-    step size normalised by the global gradient RMS is set almost entirely by
-    the blue bands: the red bands receive a step far too small to move them.
-    That is what left 665 nm sitting near zero in earlier versions of this
-    example -- an optimiser artefact, not a limit of the model. Adam's
-    per-parameter scaling removes it, and 665 nm converges along with the rest.
+    Adam scales the step of each parameter separately. The problem needs this
+    because it is badly scaled across wavelength: Rrs at 443 nm is roughly
+    twenty times Rrs at 665 nm for these spectra, and the Jacobian scales with
+    Rrs. A single step size normalised by the global gradient RMS follows the
+    blue bands, and the red bands then receive steps too small to move them.
+    With Adam, 665 nm converges with the other bands.
     '''
     @jax.jit
     def loss(z):
@@ -251,7 +253,7 @@ def descend(forward, state, target, steps=400, lr=0.05):
 
 
 def descend_batch(forward, states, targets, steps=400, lr=0.05):
-    '''Vectorised Adam over many pixels; returns (states, initial, final).'''
+    '''Vectorised Adam over many pixels. Returns (states, initial, final).'''
     def loss(z, y):
         residual = forward(z) - y
 
@@ -277,7 +279,7 @@ def descend_batch(forward, states, targets, steps=400, lr=0.05):
 def select_pixel(forward, states, targets, mode='best', steps=400, lr=0.05,
                  sample=512, seed=0):
     '''
-    Optimise a subset of pixels and pick one to show in detail.
+    Optimise a subset of pixels and select one to display in detail.
 
     mode - 'best' lowest final loss, 'worst' highest, 'median', or 'improve'
            for the largest reduction.
@@ -313,7 +315,8 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
                  predicted_initial, predicted_final, losses, out_path,
                  colour_limit=1.5e-3, linear_threshold=1e-7):
     '''
-    Four-panel summary: two Jacobian heatmaps, the pixel fit, and convergence.
+    Summary figure with four panels: two Jacobian heatmaps, the pixel fit, and
+    convergence.
 
     bands is the DataFrame from classify_bands(), restricted to the bands that
     were carried through the inversion. Bands whose spectral response is
@@ -344,8 +347,8 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
     colours.set_bad(color='none', alpha=0.0)
     # Sensitivity scales with Rrs itself, which falls by two orders of magnitude
     # from the blue bands to the red ones. On a linear scale the red rows are
-    # uniformly white and the panel says nothing about them, so the colour axis
-    # is symmetric-log: linear through zero, logarithmic outside it, sign kept.
+    # uniformly white, so the colour axis is symmetric logarithmic: linear
+    # around zero, logarithmic outside that range, with the sign kept.
     norm = SymLogNorm(linthresh=linear_threshold, vmin=-colour_limit,
                       vmax=colour_limit, base=10)
 
@@ -370,9 +373,9 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
         axis.set_title(title, fontsize=14)
 
         for row in range(n_bands):
-            # Each row gets its own vertical scale, so the shape of a red band's
-            # response is as legible as a blue band's. The colour underneath
-            # still carries the absolute magnitude.
+            # Each row has its own vertical scale, so the response shape of a
+            # red band is as legible as that of a blue band. The colour
+            # underneath carries the absolute magnitude.
             peak = np.nanmax(np.abs(panel[row]))
             peak = float(peak) if np.isfinite(peak) and peak > 0 else 1.0
             inset = axis.inset_axes([0, 1 - (row + 1) / n_bands, 1, 1 / n_bands],
@@ -403,9 +406,9 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
     colour_axis = figure.add_subplot(grid[:, 2])
     bar = figure.colorbar(image, cax=colour_axis, extend='both')
     bar.set_label('Sensitivity [sr$^{-1}$]', fontsize=13, fontweight='bold')
-    # Label true powers of ten all the way to the linear region around zero.
-    # Dividing the colour limit produced arbitrary 1.5 multiples and hid the
-    # small-value decades on this symmetric-log scale.
+    # Label powers of ten from the colour limit down to the linear region
+    # around zero, so each decade of the symmetric logarithmic scale has a
+    # tick.
     exponents = np.arange(int(np.ceil(np.log10(linear_threshold))),
                           int(np.floor(np.log10(colour_limit))) + 1)
     positive_ticks = 10.0 ** exponents
@@ -420,9 +423,9 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
 
     axis_fit = figure.add_subplot(right_grid[1])
     axis_fit.plot(band_wl, np.asarray(observed), 'o-', color='black', markersize=9,
-                  linewidth=2.5, label='MSI observed', zorder=3)
+                  linewidth=2.5, label='MSI Rrs', zorder=3)
     axis_fit.plot(band_wl, np.asarray(predicted_initial), 'o--', color='tab:blue',
-                  markersize=5, label='Initial guess', zorder=4)
+                  markersize=5, label='Initial state', zorder=4)
     axis_fit.plot(band_wl, np.asarray(predicted_final), 'o--', color='limegreen',
                   markersize=5, linewidth=1.8, label='After gradient descent', zorder=6)
 
@@ -432,7 +435,7 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
         axis_fit.axvspan(hi, max(band_wl) * 1.03, alpha=0.12, color='grey', zorder=0)
         axis_fit.axvline(hi, color='firebrick', linestyle='--', linewidth=1.2,
                          alpha=0.8, zorder=1,
-                         label='HYDROPT polynomial degrades > {:.0f} nm'.format(hi))
+                         label='Above {:.0f} nm: valid for low absorption'.format(hi))
         axis_fit.scatter(band_wl[is_clipped], np.asarray(predicted_final)[is_clipped],
                          s=130, facecolors='none', edgecolors='firebrick',
                          linewidths=1.6, zorder=5,
@@ -441,7 +444,7 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
 
     axis_fit.set_xlabel('MSI band [nm]', fontsize=14, fontweight='bold')
     axis_fit.set_ylabel(r'$\mathbf{R_{rs}}$ [sr$^{-1}$]', fontsize=14, fontweight='bold')
-    # Round the upper limit to a labelled tick without clipping any spectrum.
+    # Round the upper limit up to a labelled tick above the highest spectrum.
     peak_rrs = max(float(np.max(values))
                    for values in (observed, predicted_initial, predicted_final))
     rrs_ticks = mpl.ticker.MaxNLocator(nbins=5, steps=[1, 2, 5, 10]).tick_values(
@@ -466,7 +469,7 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
                    fontweight='bold', va='bottom', ha='left')
 
     left, right = axis_a.get_position(), axis_b.get_position()
-    figure.text((left.x0 + right.x1) / 2, 0.02, 'HYDROPT $\\lambda$ [nm]',
+    figure.text((left.x0 + right.x1) / 2, 0.02, 'Wavelength $\\lambda$ [nm]',
                 ha='center', fontsize=14, fontweight='bold')
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -502,7 +505,7 @@ def parse_args(argv=None):
     parser.add_argument('--select', default='best',
                         choices=['best', 'worst', 'median', 'improve', 'index'])
     parser.add_argument('--index', type=int, default=None,
-                        help='pixel to display; required with --select index')
+                        help='pixel to display, required with --select index')
     parser.add_argument('--basis-centres', type=int, default=6)
     parser.add_argument('--basis-sigma-nm', type=float, default=40.0)
     parser.add_argument('--prior-amplitude', type=float, default=0.35)
@@ -530,8 +533,8 @@ def main(argv=None):
     print('Sentinel-2 MSI bands in {}'.format(Path(args.msi_csv).name))
     print('  coverage = response inside the coefficient grid {:.0f}-{:.0f} nm'
           .format(float(fine_wl.min()), float(fine_wl.max())))
-    print('  reliable = response inside {:.0f}-{:.0f} nm, where the coefficients '
-          'hold for any state\n'.format(*RELIABLE_WAVELENGTH_RANGE))
+    print('  reliable = response inside {:.0f}-{:.0f} nm, where log(Rrs) stays above -30 '
+          'for plausible states\n'.format(*RELIABLE_WAVELENGTH_RANGE))
     for _, row in bands.iterrows():
         print('  {:>6.0f} nm   coverage {:8.4%}   reliable {:8.4%}   {}'.format(
             row['centre_nm'], row['coverage'], row['reliable'], row['class']))
@@ -540,13 +543,12 @@ def main(argv=None):
     dropped = bands['centre_nm'].to_numpy()[~keep]
     clipped = bands['centre_nm'].to_numpy()[(bands['class'] == 'clipped').to_numpy()]
     if dropped.size:
-        print('\n  dropped: {} -- essentially none of their response falls inside the '
-              'coefficient\n  table, so band-integrating over it would just re-report '
-              'Rrs at its red end.'
-              .format(', '.join('{:.0f} nm'.format(w) for w in dropped)))
+        print('\n  discarded: {}. Less than {:.0%} of their response lies inside the '
+              'coefficient table.'
+              .format(', '.join('{:.0f} nm'.format(w) for w in dropped), CLIPPED_SRF_FRACTION))
     if clipped.size:
-        print('  fitted with a truncation bias: {} -- response is cut by the end of the '
-              'grid,\n  so the modelled value averages only the covered part.'
+        print('  fitted with a truncation bias: {}. The end of the grid cuts their '
+              'response,\n  and the modelled value averages the covered part.'
               .format(', '.join('{:.0f} nm'.format(w) for w in clipped)))
 
     bands = bands[keep].reset_index(drop=True)
@@ -555,13 +557,13 @@ def main(argv=None):
 
     forward, jacobian_fn = build_forward(coeffs, powers, srf, a_water, bb_water)
 
-    # Start from a clear-water state: 0.05 m^-1 of excess absorption and
+    # Start from a clear water state: 0.05 m^-1 of excess absorption and
     # 0.005 m^-1 of excess backscattering on top of pure water.
     log_da0 = jnp.log(jnp.full(fine_wl.shape, 0.05))
     log_dbb0 = jnp.log(jnp.full(fine_wl.shape, 0.005))
 
     a_start, bb_start = iops_from_excess(log_da0, log_dbb0, a_water, bb_water)
-    print('\nStarting state (clear water over the pure-water floor):')
+    print('\nStarting state (clear water over the pure water floor):')
     report_domain(check_domain(a_start, bb_start, fine_wl, coeffs, powers, error=False),
                   fine_wl.size)
 
@@ -578,7 +580,7 @@ def main(argv=None):
         jacobian_fn, states, srf, fine_wl, n_samples=args.jacobian_samples)
 
     on_support = np.asarray(support)
-    print('\nSensitivity across the ensemble, on each band\'s spectral support:')
+    print('\nSensitivity across the ensemble, on the spectral support of each band:')
     print('  median |dRrs/dln excess a|   {:.3e}'.format(
         float(np.median(np.abs(np.asarray(median_jacobian[0]))[on_support]))))
     print('  median |dRrs/dln excess bb|  {:.3e}'.format(

@@ -1,10 +1,9 @@
 """
 Tests for the validity domain guard.
 
-The failure these protect against is not a crash but a silence: outside the
-fitted domain rrs_poly returns exactly zero with an exactly zero gradient, and
-an optimiser given those bands simply gets nothing from them. The regression to
-watch for is that going out of bounds stops being noisy again.
+Outside the fitted domain, rrs_poly returns zero with a zero gradient and
+raises no error, and an optimiser receives no gradient from those bands. These
+tests verify that check_domain reports such states.
 """
 import unittest
 
@@ -37,13 +36,13 @@ class TestWaterFloor(unittest.TestCase):
         a_water, bb_water = load_water_iops(self.lam)
         self.assertEqual(a_water.shape, self.lam.shape)
         self.assertEqual(bb_water.shape, self.lam.shape)
-        # Water absorption rises steeply into the red; this is the value that
-        # makes the old a = 0.05 m^-1 starting guess unphysical at 710 nm.
+        # Water absorption rises steeply towards the red end. At 710 nm it
+        # exceeds 0.8 m^-1, so a = 0.05 m^-1 lies below pure water there.
         self.assertGreater(float(a_water[-1]), 0.8)
 
-    def test_excess_parameterisation_never_breaches_the_floor(self):
-        # Even an absurd optimiser step cannot push the state below pure water,
-        # because exp() is positive everywhere.
+    def test_excess_parameterisation_stays_at_or_above_the_floor(self):
+        # Large optimiser steps keep the state at or above pure water, because
+        # exp() is non-negative.
         for log_excess in (-1e6, -100.0, 0.0, 10.0):
             a, bb = iops_from_excess(
                 jnp.full(self.lam.shape, log_excess),
@@ -65,7 +64,7 @@ class TestWaterFloor(unittest.TestCase):
 
         gradient = np.asarray(jax.grad(loss)(state))
         self.assertTrue(np.all(np.isfinite(gradient)))
-        # The point of the fix: no band contributes a dead zero gradient.
+        # Each band contributes a nonzero gradient.
         self.assertFalse(np.any(gradient == 0.0))
 
 
@@ -77,16 +76,16 @@ class TestSilentZeros(unittest.TestCase):
         self.powers = monomial_powers_2d(4)
 
     def test_out_of_domain_state_underflows_to_exact_zero(self):
-        # This is the old example's starting guess: 0.05 m^-1 at every
-        # wavelength, sixteen times below pure water's absorption at 710 nm.
+        # 0.05 m^-1 at each wavelength, sixteen times below the absorption of
+        # pure water at 710 nm.
         a = jnp.full(self.lam.shape, 0.05)
         bb = jnp.full(self.lam.shape, 0.005)
         rrs = np.asarray(rrs_poly(a, bb, self.coeffs, self.powers))
 
         self.assertTrue(np.any(rrs == 0.0),
                         'expected exact zeros past the red edge')
-        # ... and the gradient dies with it, which is why the optimiser could
-        # never recover those bands.
+        # The gradient underflows to zero as well, and the optimiser receives
+        # no gradient from those bands.
 
         def forward(state):
             return jnp.sum(rrs_poly(state[0], state[1], self.coeffs, self.powers))
@@ -122,16 +121,16 @@ class TestCheckDomain(unittest.TestCase):
         self.assertEqual(int(mask.sum()), 57)
         self.assertTrue(np.all(np.asarray(self.lam)[~mask] > hi))
 
-    def test_raises_on_the_old_example_state(self):
+    def test_raises_on_a_state_below_pure_water(self):
         with self.assertRaises(DomainError) as raised:
             check_domain(np.full(self.lam.shape, 0.05),
                          np.full(self.lam.shape, 0.005),
                          self.lam, self.coeffs, self.powers)
         message = str(raised.exception)
-        # The message has to name the actual problem, not just fail.
+        # The message names each problem.
         self.assertIn('below pure water', message)
         self.assertIn('710 nm', message)
-        self.assertIn('run away', message)
+        self.assertIn('log(Rrs) falls outside [-30, 0]', message)
 
     def test_warns_instead_of_raising_when_asked(self):
         with self.assertWarns(UserWarning):
@@ -158,7 +157,7 @@ class TestCheckDomain(unittest.TestCase):
                                     np.asarray(bb_water) + 0.005, lam, error=False)
         self.assertTrue(any('outside the reliable range' in p for p in problems))
 
-    def test_rejects_nonfinite_iops_with_or_without_coefficients(self):
+    def test_rejects_nan_or_infinite_iops_with_or_without_coefficients(self):
         mask = reliable_band_mask(self.lam)
         lam = self.lam[mask]
         water = [np.asarray(v) for v in load_water_iops(lam)]
@@ -171,19 +170,19 @@ class TestCheckDomain(unittest.TestCase):
                         optional = (self.coeffs[mask], self.powers) if include_coeffs else ()
                         with self.assertRaises(DomainError) as raised:
                             check_domain(*state, lam, *optional)
-                        self.assertIn(name + ' is non-finite', str(raised.exception))
+                        self.assertIn(name + ' is NaN or infinite', str(raised.exception))
                         self.assertIn('400 nm', str(raised.exception))
 
-    def test_warns_for_nonfinite_iops_without_coefficients(self):
+    def test_warns_for_nan_or_infinite_iops_without_coefficients(self):
         lam = self.lam[reliable_band_mask(self.lam)]
         a_water, bb_water = load_water_iops(lam)
         a = np.asarray(a_water) + 0.05
         a[0] = np.nan
         with self.assertWarns(UserWarning):
             problems = check_domain(a, np.asarray(bb_water) + 0.005, lam, error=False)
-        self.assertTrue(any('absorption is non-finite' in p for p in problems))
+        self.assertTrue(any('absorption is NaN or infinite' in p for p in problems))
 
-    def test_runaway_diagnostic_identifies_the_failing_wavelength(self):
+    def test_log_rrs_diagnostic_identifies_the_failing_wavelength(self):
         lam = self.lam[reliable_band_mask(self.lam)]
         a_water, bb_water = load_water_iops(lam)
         # Constant polynomials isolate an overflow/underflow from valid bands.

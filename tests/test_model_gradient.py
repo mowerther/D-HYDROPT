@@ -46,7 +46,7 @@ class TestForwardModel(unittest.TestCase):
 
     def _test_jacobian(self):
         jac_ana = self.model.jacobian(chl=.1)
-        # replace None's with parameter values
+        # replace None values with parameter values
         jac_num = jacfwd(self.fwd_model, (0))(chl=.1)
 
 

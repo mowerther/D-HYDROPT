@@ -9,11 +9,11 @@ from .core import monomial_powers_2d
 
 #: Coefficient tables shipped with HYDROPT, keyed by the total polynomial degree.
 #:
-#: Degree 4 is the reference table used throughout HYDROPT and validated against
-#: the original NumPy implementation in tests/test_jax_equivalence.py. The
-#: degree-5 table ships with the package but is a separate fit (note the missing
-#: '_h2o' in its name -- it predicts noticeably different Rrs for the same a and
-#: bb) and has not been validated here. Treat it as experimental.
+#: Degree 4 is the reference table used throughout HYDROPT, and
+#: tests/test_jax_equivalence.py compares it with the original NumPy
+#: implementation. The degree 5 table ships with the package as a separate fit.
+#: Its name lacks the '_h2o' suffix, and it predicts different Rrs for the same
+#: a and bb. The tests cover degree 4 only, so treat degree 5 as experimental.
 COEFFICIENT_FILES = {
     4: 'PACE_polynom_04_h2o.csv',
     5: 'PACE_polynom_05.csv',
@@ -37,7 +37,7 @@ def term_names(degree=4):
     '''
     Coefficient column names in monomial_powers_2d order.
 
-    Derived from the exponents rather than hard-coded, so the ordering of the
+    Derived from the exponents, not hard-coded, so the ordering of the
     loaded coefficients is guaranteed to match the ordering of the polynomial
     features they are multiplied by.
     '''
@@ -48,8 +48,8 @@ def load_pace_poly(degree=4):
     '''
     Load a HYDROPT polynomial coefficient table.
 
-    degree - total degree of the polynomial; see COEFFICIENT_FILES. Only
-             degree 4 is validated; degree 5 is experimental.
+    degree - total degree of the polynomial, as listed in COEFFICIENT_FILES.
+             Degree 4 is validated and degree 5 is experimental.
 
     Returns (wavelength, coefficients), where wavelength has shape (n_bands,)
     in nm and coefficients has shape (n_bands, n_terms), with terms ordered to
@@ -59,7 +59,7 @@ def load_pace_poly(degree=4):
         filename = COEFFICIENT_FILES[degree]
     except KeyError:
         raise ValueError(
-            'no coefficient table for degree {}; available degrees are {}'
+            'no coefficient table for degree {}. Available degrees are {}'
             .format(degree, sorted(COEFFICIENT_FILES))) from None
 
     df = pd.read_csv(data_path(filename))
@@ -71,17 +71,21 @@ def load_pace_poly(degree=4):
 
 def load_water_iops(wavelength=None):
     '''
-    Pure water absorption and backscattering (Mason et al. 2016).
+    Pure water absorption and backscattering from the HYDROPT table.
 
-    wavelength - wavelengths in nm to interpolate onto; None returns the table
-                 on its own native grid.
+    wavelength - wavelengths in nm to interpolate onto. None returns the table
+                 on its native grid of 400-710 nm at 5 nm.
 
     Returns (a_water, bb_water), both in m^-1.
 
-    These are the physical floor on total IOPs: no natural water body can
-    absorb or backscatter less than pure water does. HYDROPT's polynomial was
-    fitted with water always included, so evaluating it below this floor is
-    extrapolation. See hydropt_jax.domain.
+    Absorption follows Mason et al. (2016) at 400-550 nm and Pope and Fry
+    (1997) at 555-710 nm. Backscattering follows Morel (1974), proportional
+    to wavelength^-4.32.
+
+    These values set the lower bound of the total IOPs, because natural waters
+    absorb and backscatter at least as much as pure water. The polynomial of
+    HYDROPT was fitted with water included, so its evaluation below this bound
+    is extrapolation. See hydropt_jax.domain.
     '''
     df = pd.read_csv(data_path('water_mason016.csv'), index_col='wavelength')
     lam = df.index.to_numpy(float)
@@ -104,11 +108,11 @@ def resample_coeffs(lam_src, coeffs_src, lam_tgt):
     coeffs_src - source coefficients, shape (n_src, n_terms)
     lam_tgt    - target wavelengths, shape (n_tgt,)
 
-    Note that this interpolates the *coefficients* of a fitted polynomial, not
-    the reflectance it predicts. The coefficients are smooth across most of the
-    400-690 nm range but grow by an order of magnitude between 690 and 710 nm
-    so interpolating across the red edge
-    does not yield a valid fit. Resample within 400-690 nm only.
+    The function interpolates the *coefficients* of a fitted polynomial, not
+    the reflectance it predicts. The largest coefficient stays near 3 from 400
+    to 685 nm and grows to 15 at 690 nm and 707 at 710 nm. Coefficients
+    interpolated between 685 and 710 nm therefore do not form a valid fit.
+    Resample within 400-680 nm, the RELIABLE_WAVELENGTH_RANGE.
     '''
     lam_src = np.asarray(lam_src, float)
     lam_tgt = np.asarray(lam_tgt, float)

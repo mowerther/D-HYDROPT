@@ -3,12 +3,12 @@ import os
 
 import jax
 
-# HYDROPT's polynomial is fitted in log space, and its coefficients grow to
-# ~700 on the a^4 term at the red edge of the domain. log(Rrs) there
-# legitimately reaches -100 and below. float32 exp() underflows to exactly
-# zero at log(Rrs) < -103, float64 only at < -745, so single precision
-# silently zeroes the red end of every spectrum -- value *and* gradient.
-# Set HYDROPT_JAX_DISABLE_X64=1 to opt out.
+# The polynomial of HYDROPT is fitted in log space, and its coefficients grow
+# to about 700 on the a^4 term at the red end of the grid. Where the
+# polynomial extrapolates there, log(Rrs) reaches -100 and below. exp()
+# underflows to zero below log(Rrs) = -103 in float32 and below -745 in
+# float64. In single precision, Rrs and its gradient can therefore underflow
+# to zero for absorbing water. Set HYDROPT_JAX_DISABLE_X64=1 to opt out.
 if os.environ.get('HYDROPT_JAX_DISABLE_X64', '') not in ('1', 'true', 'True'):
     jax.config.update('jax_enable_x64', True)
 

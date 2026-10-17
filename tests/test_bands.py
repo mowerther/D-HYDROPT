@@ -1,4 +1,4 @@
-"""Band averages must preserve reflectance units on any wavelength grid."""
+"""Band averages preserve reflectance units on uniform and non-uniform grids."""
 import unittest
 
 import numpy as np
@@ -30,8 +30,8 @@ class TestBandIntegration(unittest.TestCase):
         np.testing.assert_allclose(spectrum @ matrix.T, expected, rtol=1e-13)
 
     def test_coverage_resolves_the_far_tail(self):
-        # MSI 783 nm sits 8.6 sigma above 710 nm. An erf difference cancels to
-        # exactly zero there; the true mass is 4.16e-18.
+        # MSI 783 nm lies 8.6 sigma above 710 nm. An erf difference cancels to
+        # zero there, and the mass inside the interval is 4.16e-18.
         coverage = srf_coverage(np.array([783.]), np.array([20. / np.sqrt(8 * np.log(2))]),
                                 (400., 710.))
         np.testing.assert_allclose(coverage, 4.16e-18, rtol=1e-2)

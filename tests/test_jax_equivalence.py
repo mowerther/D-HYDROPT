@@ -1,11 +1,11 @@
 """
-The JAX fork must reproduce the original HYDROPT, exactly.
+Equivalence of the JAX and NumPy implementations of HYDROPT.
 
-D-HYDROPT's whole claim is 'same radiative transfer, now differentiable'. That
-claim is only worth anything if it is checked, so these tests pin the JAX
-implementation to the NumPy one it was ported from -- coefficient ordering,
-forward model, and gradient -- and pin the gradient to finite differences so
-that a change agreed on by both implementations still gets caught.
+D-HYDROPT computes the same radiative transfer as HYDROPT and adds
+differentiation. These tests compare the JAX implementation with the NumPy
+implementation it was ported from, for the coefficient ordering, the forward
+model and the gradient. They also compare the gradient with finite
+differences, which detect a change that both implementations share.
 """
 import unittest
 
@@ -35,13 +35,12 @@ def plausible_spectra(seed=0, n=25):
     Built as pure water plus a non-negative excess, so the water floor holds by
     construction. The excess absorption decays exponentially with wavelength
     and backscattering more gently, which is the broad shape of real coastal
-    water; magnitudes span clear ocean through to turbid inland water.
+    water. Magnitudes span clear ocean to turbid inland water.
 
-    The comparisons below are restricted to reliable_band_mask(). Past 680 nm
-    the coefficients degenerate and Rrs underflows into the subnormal range,
-    where NumPy and JAX round differently -- the two implementations disagree
-    there only because neither has anything meaningful to say. See
-    tests/test_domain.py, which covers that region directly.
+    The comparisons below use the wavelengths in reliable_band_mask(). Above
+    680 nm Rrs can underflow into the subnormal range, where NumPy and JAX
+    round differently, and the two implementations differ there for that
+    reason. tests/test_domain.py covers that region.
     '''
     lam, _ = load_pace_poly()
     lam = np.asarray(lam)
@@ -55,7 +54,7 @@ def plausible_spectra(seed=0, n=25):
 
 
 def reliable(array):
-    '''Select the wavelengths where the coefficients are trustworthy.'''
+    '''Select the wavelengths where the coefficients are reliable.'''
     lam, _ = load_pace_poly()
 
     return np.asarray(array)[..., reliable_band_mask(lam)]
@@ -65,9 +64,9 @@ class TestCoefficientOrdering(unittest.TestCase):
     '''The two implementations must agree on what column means what.'''
 
     def test_powers_match_sklearn(self):
-        # The NumPy model gets its exponents from sklearn; the JAX model
-        # generates them by hand. If those ever diverge, every coefficient is
-        # silently paired with the wrong monomial.
+        # The NumPy model takes its exponents from scikit-learn, and the JAX
+        # model generates them itself. If the two orders differ, coefficients
+        # are paired with the wrong monomials.
         np.testing.assert_array_equal(
             np.asarray(monomial_powers_2d(4)),
             np.asarray(PolynomialReflectance()._powers))
@@ -111,22 +110,22 @@ class TestGradient(unittest.TestCase):
         self.powers = monomial_powers_2d(4)
 
     def _autodiff_gradient(self, a, bb):
-        '''dRrs/da and dRrs/dbb at each wavelength, via reverse-mode AD.'''
+        '''dRrs/da and dRrs/dbb at each wavelength, via reverse-mode automatic differentiation.'''
         def forward(state):
             return rrs_poly(state[0], state[1], self.coeffs, self.powers)
 
         jacobian = np.asarray(jax.jacrev(forward)(jnp.asarray(np.vstack([a, bb]))))
 
         # Rrs at one wavelength depends only on the IOPs at that wavelength, so
-        # the per-wavelength derivative is the diagonal of each block.
+        # the derivative at each wavelength is the diagonal of each block.
         return np.stack([np.diagonal(jacobian[:, 0, :]), np.diagonal(jacobian[:, 1, :])])
 
     def test_matches_analytic_gradient(self):
         for a, bb in plausible_spectra(seed=3):
             expected = reliable(self.reference.gradient(np.vstack([a, bb])))
             actual = reliable(self._autodiff_gradient(a, bb))
-            # Compare relative to the larger of the two, so wavelengths where
-            # the gradient is negligible do not blow the relative error up.
+            # Compare relative to the larger of the two, so wavelengths with a
+            # negligible gradient do not inflate the relative error.
             scale = np.maximum(np.abs(expected), np.abs(actual))
             significant = scale > scale.max() * 1e-12
             np.testing.assert_array_less(
