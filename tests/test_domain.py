@@ -6,6 +6,7 @@ raises no error, and an optimiser receives no gradient from those bands. These
 tests verify that check_domain reports such states.
 """
 import unittest
+import warnings
 
 import numpy as np
 import jax
@@ -50,6 +51,22 @@ class TestWaterFloor(unittest.TestCase):
                 self.a_water, self.bb_water)
             self.assertTrue(np.all(np.asarray(a) >= np.asarray(self.a_water)))
             self.assertTrue(np.all(np.asarray(bb) >= np.asarray(self.bb_water)))
+
+    def test_floor_is_reached_with_equality_when_the_excess_underflows(self):
+        # exp(-1e6) underflows to 0, so a equals a_water: the bound is >=.
+        a, bb = iops_from_excess(jnp.full(self.lam.shape, -1e6), jnp.full(self.lam.shape, -1e6),
+                                 self.a_water, self.bb_water)
+        np.testing.assert_array_equal(np.asarray(a), np.asarray(self.a_water))
+        np.testing.assert_array_equal(np.asarray(bb), np.asarray(self.bb_water))
+
+    def test_water_iops_match_the_cited_sources(self):
+        a_water, bb_water = (np.asarray(v) for v in load_water_iops([600., 650., 700., 710.]))
+        # Absorption of Pope and Fry (1997) at 600, 650, 700 and 710 nm.
+        np.testing.assert_allclose(a_water, [0.2224, 0.340, 0.624, 0.827])
+        # Backscattering of Morel (1974), proportional to wavelength^-4.32.
+        lam, (_, bb) = np.asarray(self.lam), load_water_iops(self.lam)
+        slope = np.polyfit(np.log(lam), np.log(np.asarray(bb)), 1)[0]
+        self.assertAlmostEqual(slope, -4.32, places=2)
 
     def test_excess_parameterisation_is_differentiable_and_jittable(self):
         mask = reliable_band_mask(self.lam)
@@ -156,6 +173,27 @@ class TestCheckDomain(unittest.TestCase):
             problems = check_domain(np.asarray(a_water) + 0.05,
                                     np.asarray(bb_water) + 0.005, lam, error=False)
         self.assertTrue(any('outside the reliable range' in p for p in problems))
+
+    def test_range_message_names_the_wavelengths_and_the_cause(self):
+        lam = np.asarray(self.lam)
+        a_water, bb_water = load_water_iops(lam)
+        with self.assertWarns(UserWarning):
+            problems = check_domain(np.asarray(a_water) + 0.05,
+                                    np.asarray(bb_water) + 0.005, lam, error=False)
+        message = next(p for p in problems if 'outside the reliable range' in p)
+        self.assertIn('6 of 63 wavelengths', message)
+        self.assertIn('(685, 690, 695, 700, 705, 710)', message)
+        self.assertIn('Above 680 nm the coefficients grow', message)
+
+    def test_valid_state_returns_no_problems_without_warning(self):
+        mask = reliable_band_mask(self.lam)
+        lam = np.asarray(self.lam)[mask]
+        a, bb = iops_from_excess(jnp.full(lam.shape, np.log(0.05)),
+                                 jnp.full(lam.shape, np.log(0.005)), *load_water_iops(lam))
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            self.assertEqual(
+                check_domain(a, bb, lam, self.coeffs[mask], self.powers, error=False), [])
 
     def test_rejects_nan_or_infinite_iops_with_or_without_coefficients(self):
         mask = reliable_band_mask(self.lam)
