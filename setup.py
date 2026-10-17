@@ -31,7 +31,7 @@ setup(
     # package without data_path, and the install imports and then fails on
     # first use.
     packages=['hydropt', 'hydropt.data', 'hydropt_jax'],
-    package_data={'hydropt.data': ['*.csv']},
+    package_data={'hydropt.data': ['*.csv'], 'hydropt_jax': ['msi_srf.csv']},
     install_requires=[
         'numpy>=2.0',
         'pandas>=2.0',

@@ -173,8 +173,8 @@ pure water floor.
 
 ## Satellite band integration
 
-D-HYDROPT approximates the spectral response functions of Sentinel-2 MSI with Gaussians built
-from the nominal widths of Drusch et al. (2012):
+D-HYDROPT represents the spectral response functions of Sentinel-2 MSI in two ways. The first
+uses Gaussians built from the nominal widths of Drusch et al. (2012):
 
 ```python
 import numpy as np
@@ -190,21 +190,37 @@ rrs_bands = rrs @ srf.T
 The matrix includes trapezoidal wavelength weights, so this product preserves
 reflectance units and a constant spectrum on uniform or non-uniform grids.
 
+The second uses the response functions of S2A, S2B and S2C tabulated by ESA (2024) at 1 nm:
+
+```python
+from hydropt_jax import build_tabulated_srf, classify_tabulated_bands, load_msi_srf
+
+srf_wl, response = load_msi_srf(band_wl, satellite='S2B')
+srf = build_tabulated_srf(wavelength, srf_wl, response[:5])   # bands inside the grid
+
+rrs_bands = rrs @ srf.T
+```
+
+`build_tabulated_srf` integrates each tabulated response against R<sub>rs</sub>, linearly
+interpolated between the grid wavelengths, and preserves a constant spectrum in the same way.
+
 **Verify the band coverage before using band values.** `build_gaussian_srf` normalises each
 row over the coefficient grid. For a band with most of its response above 710 nm, the row
 places its weight on the last wavelengths of the grid. The resulting value approximates
 R<sub>rs</sub>(710) under the label of that band. For Sentinel-2 MSI:
 
-| band | response inside 400–710 nm | class |
-|---|---|---|
-| 443, 492, 560, 665 nm | ≥ 99.9 % | `full` |
-| 704 nm | 82.7 % | `clipped`, with a truncation bias |
-| 740 nm | 0.0001 % | `unusable`, approximates R<sub>rs</sub>(710) |
-| 783 nm | 0.0000 % | `unusable`, approximates R<sub>rs</sub>(710) |
+| band | response inside 400–710 nm: Gaussian | S2A | S2B | S2C | class |
+|---|---|---|---|---|---|
+| 443, 492, 560, 665 nm | ≥ 99.9 % | 100 % | 100 % | 100 % | `full` |
+| 704 nm | 82.7 % | 90.3 % | 92.0 % | 69.0 % | `clipped`, with a truncation bias |
+| 740 nm | 0.0001 % | 0 % | 0 % | 0 % | `unusable` |
+| 783 nm | 0.0000 % | 0 % | 0 % | 0 % | `unusable` |
 
-The rows for 740 and 783 nm correlate at 0.99967 because both approximate R<sub>rs</sub> at the
-end of the grid. `classify_bands()` reports these fractions and labels each band as `full`,
-`clipped` or `unusable`.
+The Gaussian rows for 740 and 783 nm correlate at 0.99967 because both approximate
+R<sub>rs</sub> at the end of the grid. The tabulated response of these bands lies outside the
+grid, and `build_tabulated_srf` returns rows of NaN for them. `classify_bands()` and
+`classify_tabulated_bands()` report these fractions and label each band as `full`, `clipped`
+or `unusable`.
 
 ---
 
@@ -233,8 +249,9 @@ region. For the retrieved state of this pixel, `check_domain()` finds log(R<sub>
 within [−30, 0] at all 63 wavelengths and reports only the six wavelengths above 680 nm.
 
 Useful flags: `--select {best,worst,median,improve,index}` selects the pixel to display,
-`--gd-steps` and `--gd-lr` control the optimiser, and `--msi-csv` reads your own data.
-Run with `--help` for the rest.
+`--gd-steps` and `--gd-lr` control the optimiser, `--msi-csv` reads your own data, and
+`--srf {gaussian,S2A,S2B,S2C}` selects the spectral response functions. The figure uses the
+Gaussian default. Run with `--help` for the rest.
 
 The inversion is underdetermined: the state has two free parameters at each of 63
 wavelengths, constrained by five MSI bands. Many states fit these bands equally well. The
@@ -256,6 +273,7 @@ hydropt_jax/        Differentiable implementation
   data.py           Coefficient tables and pure water IOPs
   domain.py         Water floor, domain validation, reliable wavelength range
   bands.py          Spectral response functions and band coverage classification
+  msi_srf.csv       Tabulated MSI response of S2A, S2B and S2C, bands B1 to B8A (ESA, 2024)
 examples/           Worked example and sample data
 tests/              Unit tests, equivalence of the JAX and NumPy implementations, domain guards
 ```
@@ -284,6 +302,8 @@ Functions that branch on values are in `hydropt_jax.domain`.
 - Drusch, M., et al. (2012). Sentinel-2: ESA's Optical High-Resolution Mission for GMES
   Operational Services. *Remote Sensing of Environment*, 120, 25–36.
   [doi:10.1016/j.rse.2011.11.026](https://doi.org/10.1016/j.rse.2011.11.026)
+- ESA (2024). Sentinel-2 Spectral Response Functions (S2-SRF), COPE-GSEG-EOPG-TN-15-0007,
+  version 4.0. [Sentinel-2 document library](https://sentiwiki.copernicus.eu/web/s2-documents)
 - Mason, J. D., Cone, M. T., & Fry, E. S. (2016). Ultraviolet (250–550 nm) absorption
   spectrum of pure water. *Applied Optics*, 55(25), 7163–7172.
   [doi:10.1364/AO.55.007163](https://doi.org/10.1364/AO.55.007163)

@@ -55,7 +55,8 @@ Other assumptions
 -----------------
 - Nadir view, 30 degree solar zenith angle (the geometry of the polynomial).
 - Gaussian approximation of the spectral response functions, from the nominal
-  MSI FWHM (Drusch et al., 2012).
+  MSI FWHM (Drusch et al., 2012). --srf S2A, S2B or S2C uses the tabulated
+  ESA response functions of that satellite instead.
 - Vertically homogeneous water column, Rrs already atmospherically corrected.
 - Spectral smoothness imposed through a radial basis function expansion.
 
@@ -63,6 +64,7 @@ Usage
 -----
     python examples/msi_gradient_inversion.py
     python examples/msi_gradient_inversion.py --gd-steps 800 --select worst
+    python examples/msi_gradient_inversion.py --srf S2B
 """
 import argparse
 import re
@@ -82,9 +84,12 @@ import jax.numpy as jnp  # noqa: E402
 from hydropt_jax import (  # noqa: E402
     RELIABLE_WAVELENGTH_RANGE,
     build_gaussian_srf,
+    build_tabulated_srf,
     check_domain,
     classify_bands,
+    classify_tabulated_bands,
     iops_from_excess,
+    load_msi_srf,
     load_pace_poly,
     load_water_iops,
     monomial_powers_2d,
@@ -510,6 +515,9 @@ def parse_args(argv=None):
     parser.add_argument('--basis-sigma-nm', type=float, default=40.0)
     parser.add_argument('--prior-amplitude', type=float, default=0.35)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--srf', default='gaussian', choices=['gaussian', 'S2A', 'S2B', 'S2C'],
+                        help='spectral response functions: Gaussian from the nominal '
+                             'MSI widths, or the tabulated ESA functions of a satellite')
     args = parser.parse_args(argv)
 
     if args.select == 'index' and args.index is None:
@@ -527,10 +535,16 @@ def main(argv=None):
 
     observations, band_wl = load_rrs_csv(args.msi_csv)
     observations = observations[:args.subset]
-    sigma = msi_sigma_nm(band_wl)
 
-    bands = classify_bands(band_wl, sigma, fine_wl)
-    print('Sentinel-2 MSI bands in {}'.format(Path(args.msi_csv).name))
+    if args.srf == 'gaussian':
+        sigma = msi_sigma_nm(band_wl)
+        bands = classify_bands(band_wl, sigma, fine_wl)
+        srf_name = 'Gaussian from the nominal MSI widths'
+    else:
+        srf_wl, response = load_msi_srf(band_wl, args.srf)
+        bands = classify_tabulated_bands(band_wl, srf_wl, response, fine_wl)
+        srf_name = 'tabulated ESA functions of {}'.format(args.srf)
+    print('Sentinel-2 MSI bands in {}, {}'.format(Path(args.msi_csv).name, srf_name))
     print('  coverage = response inside the coefficient grid {:.0f}-{:.0f} nm'
           .format(float(fine_wl.min()), float(fine_wl.max())))
     print('  reliable = response inside {:.0f}-{:.0f} nm, where log(Rrs) stays above -30 '
@@ -552,7 +566,10 @@ def main(argv=None):
               .format(', '.join('{:.0f} nm'.format(w) for w in clipped)))
 
     bands = bands[keep].reset_index(drop=True)
-    srf = build_gaussian_srf(fine_wl, bands['centre_nm'].to_numpy(), sigma[keep])
+    if args.srf == 'gaussian':
+        srf = build_gaussian_srf(fine_wl, bands['centre_nm'].to_numpy(), sigma[keep])
+    else:
+        srf = build_tabulated_srf(fine_wl, srf_wl, response[keep])
     targets = jnp.asarray(observations[:, keep])
 
     forward, jacobian_fn = build_forward(coeffs, powers, srf, a_water, bb_water)

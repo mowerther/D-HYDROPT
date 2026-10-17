@@ -28,9 +28,13 @@ from .data import (  # noqa: E402
 from .bands import (  # noqa: E402
     MSI_FWHM_NM,
     build_gaussian_srf,
+    build_tabulated_srf,
     classify_bands,
+    classify_tabulated_bands,
+    load_msi_srf,
     msi_sigma_nm,
     srf_coverage,
+    tabulated_srf_coverage,
 )
 from .domain import (  # noqa: E402
     RELIABLE_WAVELENGTH_RANGE,
@@ -47,9 +51,12 @@ __all__ = [
     'MSI_FWHM_NM',
     'RELIABLE_WAVELENGTH_RANGE',
     'build_gaussian_srf',
+    'build_tabulated_srf',
     'check_domain',
     'classify_bands',
+    'classify_tabulated_bands',
     'iops_from_excess',
+    'load_msi_srf',
     'load_pace_poly',
     'load_water_iops',
     'reliable_band_mask',
@@ -61,5 +68,6 @@ __all__ = [
     'rrs_poly',
     'rrs_poly_batched',
     'srf_coverage',
+    'tabulated_srf_coverage',
     'term_names',
 ]
