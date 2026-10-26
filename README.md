@@ -248,10 +248,20 @@ low: up to 0.84 m⁻¹ at 695 nm, falling to 0.50 m⁻¹ at 710 nm. The 704 nm b
 region. For the retrieved state of this pixel, `check_domain()` finds log(R<sub>rs</sub>)
 within [−30, 0] at all 63 wavelengths and reports only the six wavelengths above 680 nm.
 
+With the response functions of S2B tabulated by ESA (2024) instead of Gaussians, each band
+keeps its measured shape, and 92.0 % of the 704 nm response lies inside the grid (82.7 % for
+the Gaussian):
+
+```bash
+python examples/msi_gradient_inversion.py --srf S2B --out examples/figures/msi_gradient_inversion_s2b.png
+```
+
+![MSI sensitivity and gradient inversion with the S2B response functions](examples/figures/msi_gradient_inversion_s2b.png)
+
 Useful flags: `--select {best,worst,median,improve,index}` selects the pixel to display,
 `--gd-steps` and `--gd-lr` control the optimiser, `--msi-csv` reads your own data, and
-`--srf {gaussian,S2A,S2B,S2C}` selects the spectral response functions. The figure uses the
-Gaussian default. Run with `--help` for the rest.
+`--srf {gaussian,S2A,S2B,S2C}` selects the spectral response functions. The first figure uses
+the Gaussian default. Run with `--help` for the rest.
 
 The inversion is underdetermined: the state has two free parameters at each of 63
 wavelengths, constrained by five MSI bands. Many states fit these bands equally well. The
