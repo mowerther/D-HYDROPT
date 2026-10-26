@@ -428,7 +428,7 @@ def plot_results(median_jacobian, support, fine_wl, bands, observed,
 
     axis_fit = figure.add_subplot(right_grid[1])
     axis_fit.plot(band_wl, np.asarray(observed), 'o-', color='black', markersize=9,
-                  linewidth=2.5, label='MSI Rrs', zorder=3)
+                  linewidth=2.5, label=r'MSI R$_{\mathrm{rs}}$', zorder=3)
     axis_fit.plot(band_wl, np.asarray(predicted_initial), 'o--', color='tab:blue',
                   markersize=5, label='Initial state', zorder=4)
     axis_fit.plot(band_wl, np.asarray(predicted_final), 'o--', color='limegreen',
